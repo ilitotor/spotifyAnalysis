@@ -33,7 +33,7 @@ def write_csv(date_to_save):
     r = requests.get(url)
     data = "\n".join(r.text.split("\n")[1:])
 
-    with open('2019-08-24.csv', mode='a') as csv_file:
+    with open('top_global.csv', mode='a') as csv_file:
         fieldnames = ['artist', 'name', 'num_samples', 'duration', 'offset_seconds', 'window_seconds',
                       'analysis_sample_rate', 'analysis_channels', 'end_of_fade_in', 'start_of_fade_out', 'loudness', \
                       'tempo', 'tempo_confidence', 'time_signature', 'time_signature_confidence', 'key',
