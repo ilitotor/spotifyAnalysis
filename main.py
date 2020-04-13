@@ -21,7 +21,7 @@ def get_dates():
 
     for divtag in soup.findAll('div', {'data-type': 'date'}):
         for dates in divtag.findAll("li"):
-            data_limit = datetime.strptime('2019-08-24', "%Y-%m-%d").date()
+            data_limit = datetime.strptime('2018-12-04', "%Y-%m-%d").date()
             data = datetime.strptime(dates.attrs.get("data-value", None), "%Y-%m-%d").date()
             if  data < data_limit:
                 write_csv(data)
