@@ -8,20 +8,20 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from datetime import datetime
 from decouple import config
+import click
+
+# Se algum dia parar na metade, use o comando abaixo para limpar o arquivo
+# onde: - 118 é  quantidade de linha que quer apagar de baixo para cimadf.show
+# head -$(($(wc -l < top_br.csv) - 118)) top_br.csv > top_br_cut.csv
 
 # Gets or creates a logger
 logger = logging.getLogger(__name__)
 
+# Set formatter
+formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(message)s')
+
 # set log level
 logger.setLevel(logging.DEBUG)
-
-# define file handler and set formatter
-file_handler = logging.FileHandler('log_' + datetime.today().strftime('%Y-%m-%d') + '.log')
-formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(message)s')
-file_handler.setFormatter(formatter)
-
-# add file handler to logger
-logger.addHandler(file_handler)
 
 os.environ['SPOTIPY_CLIENT_SECRET'] = config('SPOTIPY_CLIENT_SECRET')
 os.environ['SPOTIPY_CLIENT_ID'] = config('SPOTIPY_CLIENT_ID')
@@ -31,31 +31,58 @@ client_credentials_manager = SpotifyClientCredentials()
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
 
-def update_files():
-    urls = ["https://spotifycharts.com/regional/br", "https://spotifycharts.com/regional/global"]
-    arquivos = ['top_brasil.csv', 'top_global.csv']
+@click.command()
+@click.option('--regional', '-r')
+# @click.option('--missing', '-m') inserir linhas que deram erros
+@click.option('--update', '-u')
+def main(regional, update):
+
+    # atualiza só uma base
+    if regional:
+        urls = [f"https://spotifycharts.com/regional/{regional}"]
+        arquivos = [f"top_{regional}.csv"]
+    else:
+        urls = ["https://spotifycharts.com/regional/br", "https://spotifycharts.com/regional/global"]
+        arquivos = ['top_br.csv', 'top_global.csv']
+
     # pegar a lista de datas
     for url, arquivo in zip(urls, arquivos):
-        with open(arquivo, mode='w+') as csv_file:
-            fieldnames = ["track_id", "position", "artist", "name", "streams", "duration_ms",
-                          "key", "mode", "time_signature", "acousticness", "danceability", "energy",
-                          "instrumentalness", "liveness", "loudness", "speechiness", "valence", "tempo", "date"]
-            writer = csv.DictWriter(csv_file, extrasaction='ignore', fieldnames=fieldnames)
-            writer.writeheader()
-        get_dates(url, arquivo)
-    return logger.info('Fim do processo. Todas as bases foram atualizadas')
 
+        # define file handler
+        log_regional_name = url.split("/")[4]
+        file_handler = logging.FileHandler('log_'
+                                           + datetime.today().strftime('%Y-%m-%d')
+                                           + '_' + log_regional_name
+                                           + '.log')
 
-def get_dates(url, arquivo):
-    url = url
-    data = requests.get(url)
-    soup = BeautifulSoup(data.content, 'html.parser')
+        file_handler.setFormatter(formatter)
+        # add file handler to logger
+        logger.addHandler(file_handler)
 
-    for divtag in soup.findAll('div', {'data-type': 'date'}):
-        for dates in divtag.findAll("li"):
-            data = datetime.strptime(dates.attrs.get("data-value", None), "%Y-%m-%d").date()
-            write_csv(data, arquivo, url)
-    return logger.info('Finalizada atualização ' + arquivo)
+        #to not create new header when update file.
+        if not update:
+            with open(arquivo, mode='a') as csv_file:
+                fieldnames = ["track_id", "position", "artist", "name", "streams", "duration_ms",
+                              "key", "mode", "time_signature", "acousticness", "danceability", "energy",
+                              "instrumentalness", "liveness", "loudness", "speechiness", "valence", "tempo", "date"]
+                writer = csv.DictWriter(csv_file, extrasaction='ignore', fieldnames=fieldnames)
+                writer.writeheader()
+
+        data = requests.get(url)
+        soup = BeautifulSoup(data.content, 'html.parser')
+
+        for divtag in soup.findAll('div', {'data-type': 'date'}):
+            for dates in divtag.findAll("li"):
+                date = datetime.strptime(dates.attrs.get("data-value", None), "%Y-%m-%d").date()
+                if update:
+                    date_update = datetime.strptime(update, "%Y-%m-%d").date()
+                    if date > date_update:
+                        write_csv(date, arquivo, url)
+                else:
+                    write_csv(date, arquivo, url)
+        logger.info('Finalizado ' + arquivo)
+
+    return logger.info('Finalizada atualização')
 
 
 def write_csv(date_to_save, arquivo, url):
@@ -68,12 +95,11 @@ def write_csv(date_to_save, arquivo, url):
                       "key", "mode", "time_signature", "acousticness", "danceability", "energy",
                       "instrumentalness", "liveness", "loudness", "speechiness", "valence", "tempo", "date"]
 
-        # prepara o arquivo para ser escrito
         writer = csv.DictWriter(csv_file, extrasaction='ignore', fieldnames=fieldnames)
 
-        # le o csv que vem do spotify
         spotify_data = csv.reader(data.splitlines(), delimiter=',')
-        next(spotify_data)  # skip first line (head)
+        next(spotify_data)  # skip header from spotify file
+        
         for track in spotify_data:
             details_track = sp.audio_features(track[4])
 
@@ -96,7 +122,7 @@ def write_csv(date_to_save, arquivo, url):
 
 if __name__ == "__main__":
     logger.info('Início do processo')
-    update_files()
+    main()
 
 # TO-DO
 # RODAR TUDO DENOVO NO GCP
